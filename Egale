@@ -1,0 +1,126 @@
+import hashlib
+import zipfile
+import itertools
+import string
+import os
+import time
+import multiprocessing
+from termcolor import colored
+import tqdm
+import random
+
+# Function to crack the zip password using brute force
+def brute_force_zip(zip_file, wordlist=None, max_length=5):
+    print("[+] Starting Brute Force attack...")
+    found = False
+    if wordlist:
+        with open(wordlist, 'r') as f:
+            words = f.readlines()
+            for word in tqdm.tqdm(words, desc="Cracking", ncols=100):
+                word = word.strip()
+                try:
+                    if test_password(zip_file, word):
+                        print(colored(f"[+] Password found: {word}", 'green'))
+                        found = True
+                        break
+                except Exception as e:
+                    print(colored(f"[-] Error: {str(e)}", 'red'))
+    if not found:
+        print("[+] Brute force using custom character sets...")
+        charset = string.ascii_lowercase + string.ascii_uppercase + string.digits
+        for password in tqdm.tqdm(generate_passwords(charset, max_length), desc="Brute forcing", ncols=100):
+            try:
+                if test_password(zip_file, password):
+                    print(colored(f"[+] Password found: {password}", 'green'))
+                    found = True
+                    break
+            except Exception as e:
+                print(colored(f"[-] Error: {str(e)}", 'red'))
+    if not found:
+        print("[!] Password not found.")
+    else:
+        print("[+] Attack Completed.")
+
+# Function to test if a password works on the zip file
+def test_password(zip_file, password):
+    with zipfile.ZipFile(zip_file) as zf:
+        try:
+            zf.setpassword(password.encode('utf-8'))
+            zf.testzip()  # Test the password
+            return True
+        except RuntimeError:
+            return False
+
+# Function to generate all possible password combinations up to max_length
+def generate_passwords(charset, max_length):
+    for length in range(1, max_length + 1):
+        for password in itertools.product(charset, repeat=length):
+            yield ''.join(password)
+
+# Function for Hybrid Attack: Combination of Wordlist and Brute Force
+def hybrid_attack(zip_file, wordlist):
+    print("[+] Starting Hybrid Attack...")
+    with open(wordlist, 'r') as f:
+        words = f.readlines()
+        for word in tqdm.tqdm(words, desc="Cracking", ncols=100):
+            word = word.strip()
+            charset = string.ascii_lowercase + string.ascii_uppercase + string.digits
+            for i in range(1, 6):  # Adding a digit to each word
+                new_password = word + random.choice(charset)
+                try:
+                    if test_password(zip_file, new_password):
+                        print(colored(f"[+] Password found: {new_password}", 'green'))
+                        return
+                except Exception as e:
+                    print(colored(f"[-] Error: {str(e)}", 'red'))
+    print("[+] Hybrid attack failed.")
+
+# Session Management: Save the progress of attack
+def save_session(zip_file, progress_data):
+    session_file = f"{zip_file}_session.txt"
+    with open(session_file, 'w') as f:
+        f.write(progress_data)
+
+def load_session(zip_file):
+    session_file = f"{zip_file}_session.txt"
+    if os.path.exists(session_file):
+        with open(session_file, 'r') as f:
+            return f.read()
+    return None
+
+# Function to handle Incremental Mode
+def incremental_attack(zip_file, charset, start_len=1, max_len=5):
+    print("[+] Starting Incremental Attack...")
+    for length in range(start_len, max_len + 1):
+        for password in itertools.product(charset, repeat=length):
+            password_str = ''.join(password)
+            try:
+                if test_password(zip_file, password_str):
+                    print(colored(f"[+] Password found: {password_str}", 'green'))
+                    return
+            except Exception as e:
+                print(colored(f"[-] Error: {str(e)}", 'red'))
+
+# Main function to start the process
+def main():
+    zip_file = input("[+] Enter the ZIP file path: ")
+    wordlist = input("[+] Enter the path to the wordlist (or press Enter to skip): ")
+    
+    # Try to load previous session
+    session_data = load_session(zip_file)
+    if session_data:
+        print(f"[+] Resuming session from: {session_data}")
+    
+    # Brute force attack (hybrid and custom)
+    brute_force_zip(zip_file, wordlist)
+    
+    # Hybrid attack (if wordlist is provided)
+    if wordlist:
+        hybrid_attack(zip_file, wordlist)
+    
+    # Incremental attack if no password is found
+    charset = string.ascii_letters + string.digits
+    incremental_attack(zip_file, charset)
+
+if __name__ == "__main__":
+    main()
